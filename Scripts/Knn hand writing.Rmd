@@ -1,0 +1,316 @@
+---
+title: "Homwork 3"
+output: html_document
+---
+
+Q 1.1
+
+First I shulffe the original dataset, and names it rmdata. In order to match the index in the later step, I rename the row name for rmdata.
+Saving it, then I can use it later.
+
+```{r}
+
+setwd("I:/R Data/141/hw3")
+Wholedata = read.csv("digitsTrain.csv")
+rmdata = Wholedata[sample(nrow(Wholedata), nrow(Wholedata)), ]
+rownames(rmdata) = rep(1:5000)
+saveRDS(rmdata, file = "rmdata.rds")
+
+```
+
+calculate the distance for different methods and save them. I use euclidean, manhattan, minkowski and cosine
+
+```{r}
+library(MKmisc)
+diff = as.matrix(corDist(rmdata[,-1], method = "cosine"))
+saveRDS(diff, file = "cosine.rds")
+diff = as.matrix(dist(rmdata[,-1], method = "euclidean"))
+saveRDS(diff, file = "euclidean.rds")
+diff = as.matrix(dist(rmdata[,-1], method = "manhattan"))
+saveRDS(diff, file = "manhattan.rds")
+diff = as.matrix(dist(rmdata[,-1], method = "minkowski"))
+saveRDS(diff, file = "minkowski.rds")
+
+```
+
+I first work on the euclidean distance.
+
+```{r}
+diff = readRDS("euclidean.rds")
+rmdata = readRDS("rmdata.rds")
+
+```
+
+wirte my KNN function. 
+1. I order the distance for each individual test images. 
+2. Since I order them in first step, I chose the first kth values, that are the closest k points
+3. match the row names to the origianl dataset, replace the first kth distance values from step 2 to the label.
+4. use table to get the frequncy of the label of the kth points
+5. order the frequncy of the label of the kth points and pick label that appears most
+6. unlist the labels and return the labels
+```{r}
+KNN = function(testset,k)
+{
+  order_diff=lapply(1:ncol(testset), function(x) testset[,x][order(testset[,x])])
+  options = lapply(1:length(order_diff), function(x) names(order_diff[[x]])[1:k])
+  label = lapply(1:length(order_diff), function(x) rmdata[as.numeric(options[[x]]),1])
+  tab <- lapply(1:length(label), function(x) table(label[[x]]))
+  final = lapply(1:length(tab), function(x)  names(tab[[x]][order(-tab[[x]])])[1])
+  final = as.numeric(unlist(final))
+  return(final)
+}
+
+```
+
+This is the function that I can get the error rate base on the different k. 
+1~5 Since we calculate all the distance at once I separate them into 5 parts. each one is a 4000*1000 matrix. The columns is the test set, and the rows is the training set which is the rest 4000 images that remove the 1000 test images 
+6~12 use the KNN function above to get the predict labels, and conbine them into a 1000*1 matrix, then I can compare it to the true labels 
+13. compare it to the true labels, find how many falses and devide it to the total images we have, then I will get the error rate
+14. make a matrix with error rate in columns one and k in columns two in order to compare the error rate for different k later.
+
+```{r}
+error = function(k)
+{
+  cross1 = as.matrix(diff[-(1:1000),1:1000])
+  cross2 = as.matrix(diff[-(1001:2000),1001:2000])
+  cross3 = as.matrix(diff[-(2001:3000),2001:3000])
+  cross4 = as.matrix(diff[-(3001:4000),3001:4000])
+  cross5 = as.matrix(diff[-(4001:5000),4001:5000])
+  
+  est1 = KNN(cross1,k)
+  est2 = KNN(cross2,k)
+  est3 = KNN(cross3,k)
+  est4 = KNN(cross4,k)
+  est5 = KNN(cross5,k)
+  pret = matrix(c(est1, est2, est3, est4, est5),  ncol = 1)
+  error = sum(!rmdata[,1] == pret)/5000
+  error_k = matrix(c(error,k), ncol = 2)
+  return(error_k)
+}
+
+
+```
+
+use a for loop and KNN, error function to get the error rate for k from 1 to 30 
+```{r}
+diff_k = error(1)
+for(k in 2:30)
+{
+  temp = error(k)
+  diff_k = rbind(diff_k,temp)
+  
+}
+
+```
+
+add the distance method into it
+```{r}
+diff_k = data.frame(diff_k)
+diff_k$method = "euclidean"
+e_k =  diff_k
+```
+
+do the same thing for the different metrics, and combine all of them together and named it all_k , order the allk dataset by the error rate,
+chose the first one which has smallest error rate, and get find the best model
+```{r}
+diff = readRDS("manhattan.rds")
+diff_k = error(1)
+for(k in 2:30)
+{
+  temp = error(k)
+  diff_k = rbind(diff_k,temp)
+}
+m_k = data.frame(diff_k)
+m_k$method = "manhattan"
+
+diff = readRDS("minkowski.rds")
+diff_k = error(1)
+for(k in 2:30)
+{
+  temp = error(k)
+  diff_k = rbind(diff_k,temp)
+}
+mi_k = data.frame(diff_k)
+mi_k$method = "minkowski"
+
+diff = readRDS("cosine.rds")
+diff_k = error(1)
+for(k in 2:30)
+{
+  temp = error(k)
+  diff_k = rbind(diff_k,temp)
+}
+cos = data.frame(diff_k)
+cos$method = "cosine"
+all_k = rbind(e_k, m_k, mi_k, cos)
+model = all_k[order(all_k[,1])[1],]
+print(model)
+```
+
+Q 1.2
+draw the plots for all different k and distance metrics. Frist I read in the data set that
+contains error rate for all different k's and metrics. then I sort them in another way, in order to draw them togther in one plot with 4 different lines and 4 lines represent 4 different metrics.
+I sort them into a 30*5 data frame, the row is for different k values, the first 4 columns means the four different metrics, the last column is the K values. 
+
+```{r,echo=FALSE}
+all_k = readRDS("all k.rds")
+e_k =  all_k[all_k$method == "euclidean",][,1]
+m_k =  all_k[all_k$method == "manhattan",][,1]
+mi_k =  all_k[all_k$method == "minkowski",][,1]
+cos =  all_k[all_k$method == "cosine",][,1]
+all_k = cbind(e_k, m_k, mi_k,cos)
+colnames(all_k) = c("euclidean","manhattan","minkowski","cosine")
+all_k = data.frame(all_k)
+all_k$k = 1:30
+matplot(all_k[,-5], xlab = "K", ylab = "error rate", main = "Different K and metrics")
+legend("topleft", legend = colnames(all_k), col=1:4, pch=1, cex = 0.6)
+```
+We can see that the black ¡±1¡± and green ¡°3¡± overlap each other, so the method for euclidean and minikowski are very same to each other. The blue ¡°4¡± always has a small error rate cross all different K¡¯s compare to other metrics, so the cosine method at k = 5 gives the minimum error rate
+
+Q1.3
+
+From the part 1.1 I get the the k = 5 and distance cosine distance method give me the best model, so I run the cosine distance data again to 
+get the predict values. 
+Then I combine the predict labels and true labels in two columns. I lapply function to get the all the true labels for 
+0 to 9 predict labels and table them to get the counts. 
+sort the counts into a 10*10 table, the row is the true labels, column is the predict labels
+```{r}
+diffcos = readRDS("cosine.rds")
+
+cross1 = as.matrix(diffcos[-(1:1000),1:1000])
+cross2 = as.matrix(diffcos[-(1001:2000),1001:2000])
+cross3 = as.matrix(diffcos[-(2001:3000),2001:3000])
+cross4 = as.matrix(diffcos[-(3001:4000),3001:4000])
+cross5 = as.matrix(diffcos[-(4001:5000),4001:5000])
+
+k = 5
+est1 = KNN(cross1,k)
+est2 = KNN(cross2,k)
+est3 = KNN(cross3,k)
+est4 = KNN(cross4,k)
+est5 = KNN(cross5,k)
+pret = matrix(c(est1, est2, est3, est4, est5),  ncol = 1)
+
+label = data.frame(cbind(rmdata[,1], pret))
+colnames(label) = c("true", "pred")
+
+counts = lapply(0:9, function(x) as.numeric(table(factor((label[label$pred == x,1]), levels = 0:9))))
+counts = unlist(counts)
+confus = matrix(counts, nrow = 10, ncol = 10, byrow =  F)
+a = as.table(confus)
+colnames(a) = c("pre 0 ","pre 1 ","pre 2 ","pre 3 ","pre 4 ","pre 5 ","pre 6 ","pre 7 ","pre 8 ","pre 9 ")
+rownames(a) = c("true 0 ","true 1 ","true 2 ","true 3 ","true 4 ","true 5 ","true 6 ","true 7 ","true 8 ","true 9 ")
+print(a)
+```
+
+Q1.4
+Do the step as in Q1.3 but divide each cells count by column total to get the frequency.
+```{r}
+b = as.matrix(round(confus/colSums(confus), digits = 4))
+b = as.table(b)
+colnames(b) = c("pre 0 ","pre 1 ","pre 2 ","pre 3 ","pre 4 ","pre 5 ","pre 6 ","pre 7 ","pre 8 ","pre 9 ")
+rownames(b) = c("true 0 ","true 1 ","true 2 ","true 3 ","true 4 ","true 5 ","true 6 ","true 7 ","true 8 ","true 9 ")
+print(b)
+```
+Q1.5
+
+Q1.5
+From the table in Q1.4, we can see that 
+0 confused with 2,3,5,6,8 and 9
+1 confused with 7 and 8
+2 confused with 3
+3 confused with 5 and 8
+4 confused with 9
+5 confused with 3 and 8
+6 confused with 4 and 5
+7 confused with 2, 8 and 9
+8 confused with 2 and 3
+9 confused with 4, 7 and 8
+
+Q 1.6
+
+Get the draw function from assignment3 websit
+```{r}
+getImage = function(vals)
+{
+  matrix(as.integer(vals), 28, 28, byrow = TRUE)
+}
+
+draw = function(vals, colors = rgb((255:0)/255, (255:0)/255, (255:0)/255), ...)
+{
+  if(!is.matrix(vals))
+    vals = getImage(vals)
+  
+  m = t(vals)  # transpose the image
+  m = m[,nrow(m):1]  # turn up-side-down
+  
+  image(m, col = colors, ..., xaxt = "n", yaxt = "n")
+}
+```
+I took some mis-classified digits and plot them, the first digit is hard for me to classify if it is a 6 or 8. 
+```{r}
+tf = rmdata[1:1000,1] == est1
+subset = rmdata[1:1000,]
+mis = subset[!tf,]
+par(mfrow=c(4,4),mar = c(0,0,1,1))
+for(i in 1:16)
+{
+
+  draw(mis[i,-1])
+
+}
+```
+
+Part 2 
+I first write a function to get the predict labels by using average distance. The start and end decide where I want to start and end my test set.
+1~2 get the test and train set
+2~9 split the train data by the labels of the train data, it will be ten lists, and compute the column average for all the lists, that is the 
+averages of each pixel for all 784 pixels across all labels.
+11~16 combine the average pixel value to the test set, remove the labels and compute the distance by cosine distance. Only take the distance
+between the test set to the 10 labels
+18~23 do the samething as KNN, but now set the k = 1
+
+```{r}
+
+average = function(start, end)
+{
+  test = as.matrix(rmdata[start:end,])
+  train = rmdata[!rownames(rmdata) == rownames(test),]
+  
+  sp = split(train, factor(train[,1]))
+  ave = lapply(1:10, function(x) colMeans(sp[[x]]))
+  
+  ave = unlist(ave)
+  mat = data.frame(matrix(ave, nrow = 10, ncol = 785, byrow = T))
+  rownames(mat) = seq(1,1.9, by = 0.1)
+  colnames(mat) = colnames(test)
+  
+  dis = rbind(mat,test)
+  test = as.matrix(corDist(dis[,-1], method = "cosine"))
+  test = data.frame(test)
+  test = test[,-c(1:10)]
+  test = test[c(1:10),]
+  test = as.matrix(test)
+  
+  order_diff=lapply(1:ncol(test), function(x) test[,x][order(test[,x])])
+  options = lapply(1:length(order_diff), function(x) names(order_diff[[x]])[1])
+  label = lapply(1:length(order_diff), function(x) as.numeric(options[[x]]))
+  label = unlist(label)
+  label = (label-1)*10
+  return(label)
+}
+```
+
+run the average function to get the all predict labels and compare with the true labels to get the error rate
+```{r}
+est1 = average(1,1000)
+est2 = average(1001,2000)
+est3 = average(2001,3000)
+est4 = average(3001,4000)
+est5 = average(4001,5000)
+pret = matrix(c(est1, est2, est3, est4, est5),  ncol = 1)
+error = sum(!rmdata[,1] == pret)/5000
+print(error)
+```
+
+
